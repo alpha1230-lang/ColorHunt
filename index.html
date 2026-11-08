@@ -16,7 +16,7 @@ h1{font-size:17px;letter-spacing:2px;margin:0}.sub{font-size:10px;color:var(--mu
 .board{position:absolute;left:50%;top:50%;display:grid;transform:translate(-50%,-50%);transform-origin:center;will-change:transform}.tile{border:0;border-radius:4px;aspect-ratio:1;min-width:0;min-height:0;padding:0;touch-action:manipulation}
 .zoomlabel{position:absolute;right:9px;bottom:9px;background:#101827dd;border:1px solid var(--line);border-radius:8px;padding:5px 8px;color:var(--muted);font-size:11px;pointer-events:none}
 .zoom-controls,.tools{justify-content:center;flex-wrap:wrap}.btn.active{border-color:var(--accent);background:#25415b;color:#bceaff}.primary{background:linear-gradient(135deg,#8bd5ff,#75a9ff);color:#10213b;border:0;flex:1}
-.hint{text-align:center;line-height:1.5}.footer{text-align:center;color:#8292a8;font-size:10px;margin-top:auto}
+.hint{text-align:center;line-height:1.5}.difficulty{background:#ffffff08;border:1px solid var(--line);border-radius:13px;padding:10px 13px}.difficulty-head,.difficulty-scale{display:flex;justify-content:space-between;align-items:center}.difficulty-head{font-size:12px;color:var(--muted)}.difficulty-head strong{color:var(--accent);font-variant-numeric:tabular-nums}.difficulty input{width:100%;margin:10px 0 3px;accent-color:#8bd5ff}.difficulty-scale{font-size:10px;color:var(--muted)}.rating{background:#ffffff08;border:1px solid var(--line);border-radius:13px;padding:10px 13px;text-align:center}.rating strong{display:block;color:var(--accent);font-size:16px}.rating small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.footer{text-align:center;color:#8292a8;font-size:10px;margin-top:auto}
 .modal{display:none;position:fixed;inset:0;background:#0009;place-items:center;padding:20px;z-index:4}.modal.show{display:grid}.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;width:min(100%,390px)}.card p,.card li{font-size:13px;color:var(--muted);line-height:1.7}
 @media(max-height:700px){.app{gap:9px}.wrap{height:42vh;min-height:210px}.footer{display:none}}
 </style></head><body>
@@ -29,16 +29,27 @@ h1{font-size:17px;letter-spacing:2px;margin:0}.sub{font-size:10px;color:var(--mu
 <p class="hint">2本指でピンチして拡大・縮小 · 拡大中はドラッグで移動</p>
 <div class="tools"><button class="btn" id="assist" aria-pressed="false">◐ お助け：OFF</button><button class="btn" id="random">🎨 色を変更</button></div>
 <p class="hint" id="assistHint">お助けをONにすると色の違いが大きくなります。</p>
+<section class="difficulty">
+  <div class="difficulty-head"><label for="colorDiff">色差の強さ</label><strong id="diffValue">100%</strong></div>
+  <input id="colorDiff" type="range" min="0.1" max="100" step="0.1" value="100">
+  <div class="difficulty-scale"><span>極小 0.1%</span><span>標準 100%</span></div>
+</section>
+<section class="rating"><strong id="rating">初級 · 色差 16.0</strong><small id="ratingDetail">正解を重ねるほど、より小さな色差に挑戦できます</small></section>
 <div class="actions"><button class="btn" id="restart">最初から</button><button class="primary" id="next">次のレベルへ →</button></div>
 <div class="footer">COLOR HUNT · TRAIN YOUR EYES</div>
 </main>
-<div class="modal" id="modal"><div class="card"><h3>遊び方</h3><ul><li>1つだけ違う色のマスをタップ。</li><li>正解するとレベルアップ。進むほど色差が小さくなります。</li><li>各ステージの色相・彩度・明度はランダムです。</li><li>お助けをONにすると色差が大きくなります。</li><li>ハイスコアはこの端末のブラウザに保存されます。</li></ul><button class="primary" id="close">閉じる</button></div></div>
+<div class="modal" id="modal"><div class="card"><h3>遊び方</h3><ul><li>1つだけ違う色のマスをタップ。</li><li>正解するとレベルアップ。進むほど色差が小さくなります。</li><li>各ステージの色相・彩度・明度はランダムです。</li><li>色差は明度だけで調整。0.1%まで下げられます。</li><li>レベルが上がるほど色差が縮小し、ランクと正答率も表示されます。</li><li>お助けをONにすると色差が大きくなります。</li><li>ハイスコアはこの端末のブラウザに保存されます。</li></ul><button class="primary" id="close">閉じる</button></div></div>
 <script>
 (()=>{
 const $=id=>document.getElementById(id),KEY='color-hunt-best-v2';
-let level=1,score=0,miss=0,target=0,zoom=1,panX=0,panY=0,assist=false,palette={h:210,s:55,l:58},pointers=new Map(),gesture=null;
+let level=1,score=0,miss=0,target=0,zoom=1,panX=0,panY=0,assist=false,colorDiff=100,palette={h:210,s:55,l:58},pointers=new Map(),gesture=null,bestThreshold=999;
+const accuracy=()=>score+miss?Math.round(score/(score+miss)*100):100;
+const levelDiff=()=>Math.max(0.12,16*Math.pow(0.91,level-1));
+const effectiveDiff=()=>levelDiff()*(colorDiff/100)*(assist?3:1);
+function ratingName(v){return v>8?'初級':v>4?'中級':v>2?'上級':v>1?'達人':'極限';}
+function updateRating(){let d=effectiveDiff();$('rating').textContent=`${ratingName(d)} · 色差 ${d.toFixed(2)}`;$('ratingDetail').textContent=`正答率 ${accuracy()}% ／ 最小クリア色差 ${bestThreshold===999?'未記録':bestThreshold.toFixed(2)}`;}
 const count=()=>Math.min(36+Math.floor((level-1)/2)*12,144),cols=()=>Math.ceil(Math.sqrt(count()));
-const baseDiff=()=>Math.max(1.1,19-level*1.25),diff=()=>assist?Math.max(baseDiff(),Math.min(24,baseDiff()*2.8)):baseDiff();
+const diff=()=>effectiveDiff();
 const best=()=>Number(localStorage.getItem(KEY)||0),rand=(a,b)=>Math.random()*(b-a)+a;
 function newPalette(){palette={h:Math.floor(rand(0,360)),s:Math.floor(rand(38,78)),l:Math.floor(rand(35,69))};}
 function updateBest(){if(score>best())localStorage.setItem(KEY,String(score));$('best').textContent=best();}
@@ -46,18 +57,19 @@ function transform(){$('board').style.transform=`translate(calc(-50% + ${panX}px
 function setZoom(v){zoom=Math.max(1,Math.min(3,v));if(zoom===1)panX=panY=0;transform();}
 function render(){
 const n=count(),c=cols(),d=diff(),b=$('board'),w=$('wrap');$('level').textContent=level;$('score').textContent=score;$('miss').textContent=miss;$('best').textContent=best();
-$('details').textContent=`${n}マス · 色差 ${d.toFixed(1)}%${assist?' · お助けON':''}`;
+$('details').textContent=`${n}マス · 色差指数 ${d.toFixed(2)}${assist?' · お助けON':''}`;updateRating();
 $('assist').textContent=assist?'◐ お助け：ON':'◐ お助け：OFF';$('assist').classList.toggle('active',assist);$('assist').setAttribute('aria-pressed',String(assist));
 b.replaceChildren();let side=Math.min(w.clientWidth-24,w.clientHeight-24,Math.max(245,Math.min(440,level*7+270)));b.style.width=side+'px';b.style.gridTemplateColumns=`repeat(${c},minmax(0,1fr))`;b.style.gap=side>340?'4px':'3px';
 let base=`hsl(${palette.h} ${palette.s}% ${palette.l}%)`,sign=Math.random()<.5?1:-1;
-let oddL=Math.max(8,Math.min(92,palette.l+sign*d)),oddH=(palette.h+Math.round(rand(8,24)))%360,oddS=Math.max(10,Math.min(95,palette.s+Math.round(rand(8,22))));
-for(let i=0;i<n;i++){let t=document.createElement('button');t.className='tile';t.type='button';t.style.background=i===target?`hsl(${oddH} ${oddS}% ${oddL}%)`:base;t.setAttribute('aria-label',i===target?'異なる色':'色のマス');t.addEventListener('click',()=>{if(i===target){score++;updateBest();level++;target=Math.floor(Math.random()*count());assist=false;newPalette();setZoom(1);$('message').textContent='正解！ 次のレベルへ';$('headline').textContent='見つけた！';render();}else{miss++;$('miss').textContent=miss;$('message').textContent='惜しい！ もう一度探そう';}});b.append(t);}
+let oddL=Math.max(2,Math.min(98,palette.l+sign*d));
+for(let i=0;i<n;i++){let t=document.createElement('button');t.className='tile';t.type='button';t.style.background=i===target?`hsl(${palette.h} ${palette.s}% ${oddL}%)`:base;t.setAttribute('aria-label',i===target?'異なる色':'色のマス');t.addEventListener('click',()=>{if(i===target){score++;bestThreshold=Math.min(bestThreshold,effectiveDiff());updateBest();level++;target=Math.floor(Math.random()*count());assist=false;newPalette();setZoom(1);$('message').textContent='正解！ 次のレベルへ';$('headline').textContent='見つけた！';render();}else{miss++;$('miss').textContent=miss;$('message').textContent='惜しい！ もう一度探そう';}});b.append(t);}
 transform();
 }
 $('in').onclick=()=>setZoom(zoom+.25);$('out').onclick=()=>setZoom(zoom-.25);$('resetZoom').onclick=()=>setZoom(1);
 $('assist').onclick=()=>{assist=!assist;$('message').textContent=assist?'お助けモードON：色差を拡大':'お助けモードOFF';render();};
 $('random').onclick=()=>{newPalette();target=Math.floor(Math.random()*count());$('message').textContent='色をランダムに変更したよ';render();};
-$('restart').onclick=()=>{level=1;score=0;miss=0;assist=false;target=0;newPalette();setZoom(1);$('headline').textContent='違う色を1つ見つけよう';$('message').textContent='新しいゲームを始めよう';render();};
+$('colorDiff').addEventListener('input',e=>{colorDiff=Number(e.target.value);$('diffValue').textContent=colorDiff.toFixed(1)+'%';$('message').textContent=colorDiff<=1?'極限モード。かなり見分けにくい設定です':'色差を調整しました';render();});
+$('restart').onclick=()=>{level=1;score=0;miss=0;assist=false;bestThreshold=999;target=0;newPalette();setZoom(1);$('headline').textContent='違う色を1つ見つけよう';$('message').textContent='新しいゲームを始めよう';render();};
 $('next').onclick=()=>{level++;target=Math.floor(Math.random()*count());assist=false;newPalette();setZoom(1);$('message').textContent='次のレベルに挑戦！';render();};
 $('help').onclick=()=>$('modal').classList.add('show');$('close').onclick=()=>$('modal').classList.remove('show');
 const wrap=$('wrap'),dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
